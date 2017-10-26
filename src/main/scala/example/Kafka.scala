@@ -22,9 +22,9 @@ import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
 import org.apache.kafka.common.serialization.{Serdes, StringDeserializer, StringSerializer}
+import org.apache.kafka.streams.{KafkaStreams, KeyValue, StreamsConfig, Topology}
 import org.apache.kafka.streams.kstream.{JoinWindows, KStream, Transformer, TransformerSupplier, ValueJoiner}
-import org.apache.kafka.streams.processor.{FailOnInvalidTimestamp, TopologyBuilder}
-import org.apache.kafka.streams.{KafkaStreams, KeyValue, StreamsConfig}
+import org.apache.kafka.streams.processor.FailOnInvalidTimestamp
 
 object Kafka {
 
@@ -114,8 +114,8 @@ trait Kafka {
     }
   }
 
-  def startStreams(builder: TopologyBuilder): Unit = {
-    val streams = new KafkaStreams(builder, streamProps)
+  def startStreams(topology: Topology): Unit = {
+    val streams = new KafkaStreams(topology, streamProps)
     streams.cleanUp()
     streams.start()
   }

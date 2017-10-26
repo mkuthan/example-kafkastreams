@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-val kafkaVersion = "0.11.0.1"
+val kafkaVersion = "1.0.0"
 
 val commonSettings = Seq(
   name := "example-kafkastreams",
@@ -37,13 +37,18 @@ val customScalacOptions = Seq(
   "-Ywarn-unused-import"
 )
 
+val customResolvers = Seq(
+  "Apache Staging" at "https://repository.apache.org/content/groups/staging/"
+)
+
 val customLibraryDependencies = Seq(
+  "org.apache.kafka" %% "kafka" % kafkaVersion,
   "org.apache.kafka" % "kafka-streams" % kafkaVersion,
 
   "net.manub" %% "scalatest-embedded-kafka" % "0.16.0",
 
   "org.slf4j" % "slf4j-api" % "1.7.22",
-  "ch.qos.logback" % "logback-classic" % "1.1.7",
+  "log4j" % "log4j" % "1.2.16",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.5.0"
 )
 
@@ -54,9 +59,10 @@ val customJavaOptions = Seq(
 )
 
 lazy val root = (project in file("."))
-    .settings(commonSettings)
-    .settings(scalacOptions ++= customScalacOptions)
-    .settings(libraryDependencies ++= customLibraryDependencies)
-    .settings(fork in run := true)
-    .settings(connectInput in run := true)
-    .settings(javaOptions in run ++= customJavaOptions)
+  .settings(commonSettings)
+  .settings(scalacOptions ++= customScalacOptions)
+  .settings(resolvers ++= customResolvers)
+  .settings(libraryDependencies ++= customLibraryDependencies)
+  .settings(fork in run := true)
+  .settings(connectInput in run := true)
+  .settings(javaOptions in run ++= customJavaOptions)

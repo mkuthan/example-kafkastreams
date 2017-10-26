@@ -18,8 +18,10 @@ package example
 
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.clients.producer.KafkaProducer
-import org.apache.kafka.streams.kstream.{JoinWindows, KStream, KStreamBuilder}
-import org.apache.kafka.streams.processor.TopologyBuilder
+import org.apache.kafka.common.serialization.Serdes
+import org.apache.kafka.streams.{StreamsBuilder, Topology}
+import org.apache.kafka.streams.kstream.{JoinWindows, KStream}
+import org.apache.kafka.streams.processor.PunctuationType
 import org.apache.kafka.streams.state.{KeyValueStore, Stores}
 
 object LeftJoinAggregateExample extends LazyLogging with Kafka {
@@ -68,11 +70,11 @@ object LeftJoinAggregateExample extends LazyLogging with Kafka {
     }
   }
 
-  def join(): TopologyBuilder = {
+  def join(): Topology = {
     val AggregationStoreName = "aggregation-store"
     Thread.sleep(5000L)
 
-    val builder = new KStreamBuilder()
+    val builder = new StreamsBuilder()
 
     val thisStream: KStream[K, V] = builder.stream[K, V](ThisTopic)
     val otherStream: KStream[K, V] = builder.stream[K, V](OtherTopic)
@@ -85,11 +87,11 @@ object LeftJoinAggregateExample extends LazyLogging with Kafka {
     }
 
     builder.addStateStore(
-      Stores.create(AggregationStoreName)
-          .withKeys(classOf[K])
-          .withValues(classOf[V])
-          .persistent()
-          .build()
+      Stores.keyValueStoreBuilder(
+        Stores.persistentKeyValueStore(AggregationStoreName),
+        Serdes.String(),
+        Serdes.String()
+      )
     )
 
     val aggregatedStream: KStream[K, V] = joinedStream.stransform(
@@ -100,7 +102,7 @@ object LeftJoinAggregateExample extends LazyLogging with Kafka {
 
     aggregatedStream.to(OutputTopic)
 
-    builder
+    builder.build()
   }
 
   /*
@@ -108,27 +110,27 @@ object LeftJoinAggregateExample extends LazyLogging with Kafka {
    */
   class Aggregator(storeName: String) extends AbstractTransformer {
 
+    import collection.JavaConverters._
+
     lazy val store = context.getStateStore(storeName).asInstanceOf[KeyValueStore[K, V]]
 
     override def doInit(): Unit = {
-      context.schedule(10000L)
+
+      def p(timestamp: Long) = {
+        store.all().asScala.foreach { kv =>
+          context.forward(kv.key, kv.value)
+          store.delete(kv.key)
+        }
+        context.commit()
+      }
+
+      context.schedule(10000L, PunctuationType.WALL_CLOCK_TIME, (timestamp: Long) => p(timestamp))
     }
 
     override def doTransform(key: K, value: V): Unit = {
       Option(store.get(key)).fold(store.put(key, value)) { oldValue =>
         store.put(key, s"$oldValue, $value")
       }
-    }
-
-    override def doPunctuate(timestamp: Long): Unit = {
-      val it = store.all()
-      while (it.hasNext) {
-        val kv = it.next()
-        context.forward(kv.key, kv.value)
-        store.delete(kv.key)
-      }
-      it.close()
-      context.commit()
     }
   }
 
