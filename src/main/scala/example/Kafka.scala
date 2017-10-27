@@ -24,7 +24,7 @@ import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, Produce
 import org.apache.kafka.common.serialization.{Serdes, StringDeserializer, StringSerializer}
 import org.apache.kafka.streams.{KafkaStreams, KeyValue, StreamsConfig, Topology}
 import org.apache.kafka.streams.kstream.{JoinWindows, KStream, Transformer, TransformerSupplier, ValueJoiner}
-import org.apache.kafka.streams.processor.FailOnInvalidTimestamp
+import org.apache.kafka.streams.processor.{FailOnInvalidTimestamp, Processor, ProcessorSupplier}
 
 object Kafka {
 
@@ -76,6 +76,17 @@ object Kafka {
           override def get() = f
         },
         storeName
+      )
+  }
+
+  implicit class TopologyOps(val topology: Topology) {
+    def sAddProcessor(name: String, parentNames: Seq[String])(f: => Processor[K, V]): Topology =
+      topology.addProcessor(
+        name,
+        new ProcessorSupplier[K, V] {
+          override def get() = f
+        },
+        parentNames: _*
       )
   }
 
