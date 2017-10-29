@@ -46,8 +46,12 @@ class KryoSerde[T <: AnyRef] extends Deserializer[T] with Serializer[T] with Ser
 }
 
 object KryoSerde {
-  val DefaultPoolSize = 10
-  val OutputBufferInitial = 1024
-  val OutputBufferMax = 10 * 1024 * 1024
+
+  private val DefaultPoolSize = 10
+  private val OutputBufferInitial = 1024
+  private val OutputBufferMax = 10 * 1024 * 1024
+
+  def apply[T <: AnyRef](): KryoSerde[T] = new KryoSerde[T]()
+
 }
 

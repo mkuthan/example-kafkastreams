@@ -36,7 +36,7 @@ object DeduplicationExample extends LazyLogging with Kafka {
 
   private val OutputTopic = "deduplication_out"
 
-  private val DeduplicationWindow = 5.minutes
+  private val DeduplicationWindow = 15.seconds
 
   def main(args: Array[String]): Unit = {
     kafkaStart()
@@ -54,7 +54,7 @@ object DeduplicationExample extends LazyLogging with Kafka {
     }
 
     daemonThread {
-      Thread.sleep(3000L)
+      sleep(3000L) // scalastyle:off
 
       startStreams(deduplicate())
     }
@@ -65,32 +65,45 @@ object DeduplicationExample extends LazyLogging with Kafka {
   }
 
   def duplicates(producer: GenericProducer): Unit = {
-    val sleep = DeduplicationWindow.toSeconds / 10
+    def send(k: K, v: V) =
+      producer.send(InputTopic, k, s"v_$v")
 
     1 to 999 foreach { i =>
       val key = "%03d".format(i)
-      1 to 20 foreach { j =>
-        val value = "%02d".format(j)
-        producer.send(InputTopic, key, value)
-        Thread.sleep(sleep)
-      }
+
+      send(key, "00")
+
+      sleep(1000L) // scalastyle:off
+      send(key, "01")
+
+      sleep(2000L) // scalastyle:off
+      send(key, "02")
+
+      sleep(4000L) // scalastyle:off
+      send(key, "03")
+
+      // duplicates
+      sleep(10000L) // scalastyle:off
+      send(key, "99")
+
+      sleep(3000L) // scalastyle:off
     }
   }
 
   def deduplicate(): Topology = {
-    val ProcessorName = "deduplication-processor"
-    val StoreName = "deduplication-store"
+    val processorName = "deduplication-processor"
+    val storeName = "deduplication-store"
 
-    val deduplicationStore = deduplicationStoreBuilder(StoreName, DeduplicationWindow)
+    val deduplicationStore = deduplicationStoreBuilder(storeName, DeduplicationWindow)
 
     val deduplicationProcessor: ProcessorSupplier[K, V] =
-      () => new DeduplicationProcessor(StoreName, DeduplicationWindow)
+      () => new DeduplicationProcessor(storeName, DeduplicationWindow)
 
     new Topology()
-      .addSource("source", InputTopic)
-      .addProcessor(ProcessorName, deduplicationProcessor, "source")
-      .addSink("sink", OutputTopic, ProcessorName)
-      .addStateStore(deduplicationStore, ProcessorName)
+      .addSource(InputTopic, InputTopic)
+      .addProcessor(processorName, deduplicationProcessor, InputTopic)
+      .addSink(OutputTopic, OutputTopic, processorName)
+      .addStateStore(deduplicationStore, processorName)
   }
 
   def deduplicationStoreBuilder(storeName: String, storeWindow: FiniteDuration): StoreBuilder[WindowStore[K, V]] = {
@@ -120,12 +133,7 @@ object DeduplicationExample extends LazyLogging with Kafka {
         context().forward(key, value)
         store.put(key, value)
       }
-
-      context().commit()
     }
   }
 
-
 }
-
-

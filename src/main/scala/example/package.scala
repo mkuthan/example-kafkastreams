@@ -16,7 +16,6 @@
 
 import scala.util.Random
 
-
 package object example {
 
   def daemonThread(block: => Unit): Unit = {
@@ -30,13 +29,10 @@ package object example {
     StdIn.readLine()
   }
 
-  def skewedTimestamp(drift: Int = 100): Long =
-    System.currentTimeMillis + (drift * Random.nextGaussian()).toLong
-
-  def randomName(length: Int = 10): String =
+  def randomName(length: Int): String =
     Random.alphanumeric.take(length).mkString
 
-  def randomSleep(sleep: Int): Unit =
-    Thread.sleep(Random.nextInt(sleep).toLong)
+  def sleep(sleep: Long): Unit =
+    Thread.sleep(sleep)
 
 }

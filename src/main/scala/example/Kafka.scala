@@ -18,6 +18,9 @@ package example
 
 import java.util.Properties
 
+import scala.concurrent.duration._
+
+import com.typesafe.scalalogging.LazyLogging
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
@@ -30,33 +33,41 @@ object Kafka {
 
   type GenericConsumerRecord = ConsumerRecord[AnyRef, AnyRef]
 
-  private val BootstrapServers = "localhost:9092"
-
   private val SerdeName = classOf[KryoSerde[AnyRef]].getName
 
   private val TimestampExtractorName = classOf[FailOnInvalidTimestamp].getName
 
-  private lazy val producerProps = {
+  private val DefaultNameLeght = 10
+
+  private val DefaultPollTime = 60.seconds
+
+  private val DefaultKafkaPort = 9092
+
+  private val DefaultZkPort = 2181
+
+  private val DefaultBootstrapServers = s"localhost:$DefaultKafkaPort"
+
+  private lazy val ProducerProps = {
     val props = new Properties()
-    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BootstrapServers)
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, DefaultBootstrapServers)
     props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, SerdeName)
     props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, SerdeName)
     props
   }
 
-  private lazy val consumerProps = {
+  private lazy val ConsumerProps = {
     val props = new Properties()
-    props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BootstrapServers)
-    props.put(ConsumerConfig.GROUP_ID_CONFIG, randomName())
+    props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, DefaultBootstrapServers)
+    props.put(ConsumerConfig.GROUP_ID_CONFIG, randomName(DefaultNameLeght))
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, SerdeName)
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, SerdeName)
     props
   }
 
-  private lazy val streamProps = {
+  private lazy val StreamProps = {
     val props = new Properties()
-    props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, BootstrapServers)
-    props.put(StreamsConfig.APPLICATION_ID_CONFIG, randomName())
+    props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, DefaultBootstrapServers)
+    props.put(StreamsConfig.APPLICATION_ID_CONFIG, randomName(DefaultNameLeght))
     props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, SerdeName)
     props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, SerdeName)
     props.put(StreamsConfig.DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG, TimestampExtractorName)
@@ -65,48 +76,60 @@ object Kafka {
 
   implicit class KafkaProducerOps[K, V](val producer: KafkaProducer[K, V]) {
     def send(topic: String, key: K, value: V): Unit =
-      producer.send(new ProducerRecord(topic, null, skewedTimestamp(), key, value))
+      producer.send(new ProducerRecord(topic, key, value))
   }
 
 }
 
-trait Kafka {
+trait Kafka extends LazyLogging {
 
   import Kafka._
 
   def kafkaStart(): Unit = {
-    implicit val config = EmbeddedKafkaConfig(9092, 2181)
+    logger.info("Starting embedded Kafka")
+
+    implicit val config = EmbeddedKafkaConfig(DefaultKafkaPort, DefaultZkPort)
     EmbeddedKafka.start()
+
+    logger.info("Embedded Kafka started")
   }
 
   def kafkaStop(): Unit = {
+    logger.info("Stopping embedded Kafka")
+
     EmbeddedKafka.stop()
+
+    logger.info("Embedded Kafka stopped")
+
+  }
+
+  def startStreams(topology: Topology): Unit = {
+    logger.info("Starting stream")
+
+    val streams = new KafkaStreams(topology, StreamProps)
+    streams.cleanUp()
+    streams.start()
+
+    logger.info("Stream started")
   }
 
   def kafkaProduce(block: GenericProducer => Unit): Unit = {
-    val producer = new KafkaProducer[AnyRef, AnyRef](producerProps)
+    val producer = new KafkaProducer[AnyRef, AnyRef](ProducerProps)
     block(producer)
   }
 
   def kafkaConsume(topicName: String)(block: GenericConsumerRecord => Unit): Unit = {
     import scala.collection.JavaConverters._
-    import scala.concurrent.duration._
 
-    val consumer = new KafkaConsumer[AnyRef, AnyRef](consumerProps)
+    val consumer = new KafkaConsumer[AnyRef, AnyRef](ConsumerProps)
     consumer.subscribe(Seq(topicName).asJava)
 
     while (true) {
-      val recs = consumer.poll(60.seconds.toMillis)
+      val recs = consumer.poll(DefaultPollTime.toMillis)
       recs.iterator().asScala.foreach { record =>
         block(record)
       }
     }
-  }
-
-  def startStreams(topology: Topology): Unit = {
-    val streams = new KafkaStreams(topology, streamProps)
-    streams.cleanUp()
-    streams.start()
   }
 
 }
