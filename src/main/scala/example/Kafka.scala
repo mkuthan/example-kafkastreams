@@ -21,73 +21,51 @@ import java.util.Properties
 import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
 import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
-import org.apache.kafka.common.serialization.{Serdes, StringDeserializer, StringSerializer}
-import org.apache.kafka.streams.{KafkaStreams, KeyValue, StreamsConfig, Topology}
-import org.apache.kafka.streams.kstream.{JoinWindows, KStream, Transformer, TransformerSupplier, ValueJoiner}
-import org.apache.kafka.streams.processor.{FailOnInvalidTimestamp, Processor, ProcessorSupplier}
+import org.apache.kafka.streams.{KafkaStreams, StreamsConfig, Topology}
+import org.apache.kafka.streams.processor.FailOnInvalidTimestamp
 
 object Kafka {
 
+  type GenericProducer = KafkaProducer[AnyRef, AnyRef]
+
+  type GenericConsumerRecord = ConsumerRecord[AnyRef, AnyRef]
+
+  private val BootstrapServers = "localhost:9092"
+
+  private val SerdeName = classOf[KryoSerde[AnyRef]].getName
+
+  private val TimestampExtractorName = classOf[FailOnInvalidTimestamp].getName
+
   private lazy val producerProps = {
     val props = new Properties()
-    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092")
-    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
-    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
+    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, BootstrapServers)
+    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, SerdeName)
+    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, SerdeName)
     props
   }
 
   private lazy val consumerProps = {
     val props = new Properties()
-    props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092")
-    props.put(ConsumerConfig.GROUP_ID_CONFIG, "left-join-example-consumer")
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
+    props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, BootstrapServers)
+    props.put(ConsumerConfig.GROUP_ID_CONFIG, randomName())
+    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, SerdeName)
+    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, SerdeName)
     props
   }
 
   private lazy val streamProps = {
     val props = new Properties()
-    props.put(StreamsConfig.APPLICATION_ID_CONFIG, "left-join-example-stream")
-    props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092")
-    props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass.getName)
-    props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass.getName)
-    props.put(StreamsConfig.DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG, classOf[FailOnInvalidTimestamp].getName)
+    props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, BootstrapServers)
+    props.put(StreamsConfig.APPLICATION_ID_CONFIG, randomName())
+    props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, SerdeName)
+    props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, SerdeName)
+    props.put(StreamsConfig.DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG, TimestampExtractorName)
     props
   }
 
-  implicit class KafkaProducerOps(val producer: KafkaProducer[K, V]) {
+  implicit class KafkaProducerOps[K, V](val producer: KafkaProducer[K, V]) {
     def send(topic: String, key: K, value: V): Unit =
-      producer.send(new ProducerRecord(topic, key, value))
-  }
-
-  implicit class KStreamOps(val kStream: KStream[K, V]) {
-    def sjoin(other: KStream[K, V], windows: JoinWindows)(f: (V, V) => V): KStream[K, V] =
-      kStream.join(
-        other,
-        new ValueJoiner[V, V, V] {
-          override def apply(v1: V, v2: V) = f(v1, v2)
-        },
-        windows
-      )
-
-    def stransform(storeName: String)(f: => Transformer[K, V, KeyValue[K, V]]): KStream[K, V] =
-      kStream.transform(
-        new TransformerSupplier[K, V, KeyValue[K, V]] {
-          override def get() = f
-        },
-        storeName
-      )
-  }
-
-  implicit class TopologyOps(val topology: Topology) {
-    def sAddProcessor(name: String, parentNames: Seq[String])(f: => Processor[K, V]): Topology =
-      topology.addProcessor(
-        name,
-        new ProcessorSupplier[K, V] {
-          override def get() = f
-        },
-        parentNames: _*
-      )
+      producer.send(new ProducerRecord(topic, null, skewedTimestamp(), key, value))
   }
 
 }
@@ -105,22 +83,22 @@ trait Kafka {
     EmbeddedKafka.stop()
   }
 
-  def kafkaProduce(block: KafkaProducer[K, V] => Unit): Unit = {
-    val producer = new KafkaProducer[K, V](producerProps)
+  def kafkaProduce(block: GenericProducer => Unit): Unit = {
+    val producer = new KafkaProducer[AnyRef, AnyRef](producerProps)
     block(producer)
   }
 
-  def kafkaConsume(topicName: String)(block: ConsumerRecord[K, V] => Unit): Unit = {
+  def kafkaConsume(topicName: String)(block: GenericConsumerRecord => Unit): Unit = {
     import scala.collection.JavaConverters._
+    import scala.concurrent.duration._
 
-    val consumer = new KafkaConsumer[K, V](consumerProps)
+    val consumer = new KafkaConsumer[AnyRef, AnyRef](consumerProps)
     consumer.subscribe(Seq(topicName).asJava)
 
     while (true) {
-      val recs = consumer.poll(60000L)
-      val recIt = recs.iterator()
-      while (recIt.hasNext) {
-        block(recIt.next())
+      val recs = consumer.poll(60.seconds.toMillis)
+      recs.iterator().asScala.foreach { record =>
+        block(record)
       }
     }
   }

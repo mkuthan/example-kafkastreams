@@ -19,15 +19,18 @@ package example
 import scala.concurrent.duration._
 
 import com.typesafe.scalalogging.LazyLogging
-import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.processor.{AbstractProcessor, ProcessorSupplier}
-import org.apache.kafka.streams.state.{Stores, WindowStore}
+import org.apache.kafka.streams.state.{StoreBuilder, Stores, WindowStore}
 
 object DeduplicationExample extends LazyLogging with Kafka {
 
   import Kafka._
+
+  type K = String
+
+  type V = String
 
   private val InputTopic = "deduplication_in"
 
@@ -61,7 +64,7 @@ object DeduplicationExample extends LazyLogging with Kafka {
     kafkaStop()
   }
 
-  def duplicates(producer: KafkaProducer[K, V]): Unit = {
+  def duplicates(producer: GenericProducer): Unit = {
     val sleep = DeduplicationWindow.toSeconds / 10
 
     1 to 999 foreach { i =>
@@ -75,31 +78,35 @@ object DeduplicationExample extends LazyLogging with Kafka {
   }
 
   def deduplicate(): Topology = {
-    val ProcessorName = "deduplicator"
-    val StoreName = "deduplicator-store"
+    val ProcessorName = "deduplication-processor"
+    val StoreName = "deduplication-store"
 
-    val deduplicator: ProcessorSupplier[K, V] = () => new Deduplicator(StoreName, DeduplicationWindow)
+    val deduplicationStore = deduplicationStoreBuilder(StoreName, DeduplicationWindow)
 
-    val storeRetention = DeduplicationWindow.toMillis
-    val storeWindow = DeduplicationWindow.toMillis
-    val storeSegments = 3
-    val storeRetainDuplicates = false
-
-    val deduplicatorStore = Stores.windowStoreBuilder(
-      Stores.persistentWindowStore(StoreName, storeRetention, storeSegments, storeWindow, storeRetainDuplicates),
-      Serdes.String(),
-      Serdes.String()
-    ).withLoggingDisabled()
+    val deduplicationProcessor: ProcessorSupplier[K, V] =
+      () => new DeduplicationProcessor(StoreName, DeduplicationWindow)
 
     new Topology()
       .addSource("source", InputTopic)
-      .addProcessor(ProcessorName, deduplicator, "source")
+      .addProcessor(ProcessorName, deduplicationProcessor, "source")
       .addSink("sink", OutputTopic, ProcessorName)
-      .addStateStore(deduplicatorStore, ProcessorName)
+      .addStateStore(deduplicationStore, ProcessorName)
   }
 
+  def deduplicationStoreBuilder(storeName: String, storeWindow: FiniteDuration): StoreBuilder[WindowStore[K, V]] = {
+    val retention = storeWindow.toMillis
+    val window = storeWindow.toMillis
+    val segments = 3
+    val retainDuplicates = false
 
-  class Deduplicator(val storeName: String, val window: FiniteDuration) extends AbstractProcessor[K, V] {
+    Stores.windowStoreBuilder(
+      Stores.persistentWindowStore(storeName, retention, segments, window, retainDuplicates),
+      Serdes.String(),
+      Serdes.String()
+    )
+  }
+
+  class DeduplicationProcessor(val storeName: String, val window: FiniteDuration) extends AbstractProcessor[K, V] {
 
     import scala.collection.JavaConverters._
 
@@ -118,4 +125,7 @@ object DeduplicationExample extends LazyLogging with Kafka {
     }
   }
 
+
 }
+
+

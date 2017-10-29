@@ -47,9 +47,11 @@ val customLibraryDependencies = Seq(
 
   "net.manub" %% "scalatest-embedded-kafka" % "0.16.0",
 
+  "com.twitter" %% "chill" % "0.9.2",
+
+  "com.typesafe.scala-logging" %% "scala-logging" % "3.5.0",
   "org.slf4j" % "slf4j-api" % "1.7.22",
-  "log4j" % "log4j" % "1.2.16",
-  "com.typesafe.scala-logging" %% "scala-logging" % "3.5.0"
+  "log4j" % "log4j" % "1.2.16"
 )
 
 val customJavaOptions = Seq(

@@ -14,9 +14,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import scala.util.Random
+
+
 package object example {
-  type K = String
-  type V = String
 
   def daemonThread(block: => Unit): Unit = {
     val t = new Thread(() => block)
@@ -28,5 +29,14 @@ package object example {
     import scala.io.StdIn
     StdIn.readLine()
   }
+
+  def skewedTimestamp(drift: Int = 100): Long =
+    System.currentTimeMillis + (drift * Random.nextGaussian()).toLong
+
+  def randomName(length: Int = 10): String =
+    Random.alphanumeric.take(length).mkString
+
+  def randomSleep(sleep: Int): Unit =
+    Thread.sleep(Random.nextInt(sleep).toLong)
 
 }
