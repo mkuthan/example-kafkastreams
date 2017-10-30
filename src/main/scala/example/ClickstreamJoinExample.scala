@@ -110,6 +110,7 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
 
       // early event
       sendEv(pvId, "00")
+      sendEv(pvId, "00") // duplicate
       sleep(1000L)
 
       // pv
@@ -160,7 +161,7 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
       .addSource(EvTopic, EvTopic)
       // window for pvs
       .addProcessor(pvWindowProcessorName, pvWindowProcessor, PvTopic)
-      // join on clientId + pvId + evId
+      // join on (clientId + pvId + evId) and deduplicate
       .addProcessor(evJoinProcessorName, evJoinProcessor, EvTopic)
       // map join key into clientId
       .addProcessor(evPvMapProcessorName, evPvMapProcessor, evJoinProcessorName)
