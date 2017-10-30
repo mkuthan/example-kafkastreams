@@ -19,7 +19,8 @@ package example
 import scala.concurrent.duration._
 
 import com.typesafe.scalalogging.LazyLogging
-import org.apache.kafka.streams.Topology
+import org.apache.kafka.streams.{StreamsBuilder, Topology}
+import org.apache.kafka.streams.kstream.{JoinWindows, KeyValueMapper, KStream, Reducer, TimeWindows, ValueJoiner, Windowed}
 import org.apache.kafka.streams.processor.{AbstractProcessor, ProcessorSupplier}
 import org.apache.kafka.streams.state.{StoreBuilder, Stores, WindowStore}
 
@@ -36,6 +37,8 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
   case class ClientKey(clientId: ClientId) {
     override def toString: String = clientId
   }
+
+  case class PvKey(clientId: ClientId, pvId: PvId)
 
   case class Pv(pvId: PvId, value: String)
 
@@ -89,7 +92,8 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
     daemonThread {
       sleep(3000L) // scalastyle:off
 
-      startStreams(smartJoin())
+      startStreams(clickstreamJoinProcessorApi())
+      // startStreams(clickstreamJoinDsl())
     }
 
     readLine()
@@ -136,7 +140,7 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
     }
   }
 
-  def smartJoin(): Topology = {
+  def clickstreamJoinProcessorApi(): Topology = {
     val pvStoreName = "pv-store"
     val evPvStoreName = "evpv-store"
     val pvWindowProcessorName = "pv-window-processor"
@@ -159,17 +163,80 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
       // sources
       .addSource(PvTopic, PvTopic)
       .addSource(EvTopic, EvTopic)
-      // window for pvs
+      // window for page views
       .addProcessor(pvWindowProcessorName, pvWindowProcessor, PvTopic)
       // join on (clientId + pvId + evId) and deduplicate
       .addProcessor(evJoinProcessorName, evJoinProcessor, EvTopic)
-      // map join key into clientId
+      // map key again into clientId
       .addProcessor(evPvMapProcessorName, evPvMapProcessor, evJoinProcessorName)
       // sink
       .addSink(EvPvTopic, EvPvTopic, evPvMapProcessorName)
       // state stores
       .addStateStore(pvStore, pvWindowProcessorName, evJoinProcessorName)
       .addStateStore(evPvStore, evJoinProcessorName)
+  }
+
+  def clickstreamJoinDsl(): Topology = {
+
+    val builder = new StreamsBuilder()
+    // sources
+    val evStream: KStream[ClientKey, Ev] = builder.stream[ClientKey, Ev](EvTopic)
+    val pvStream: KStream[ClientKey, Pv] = builder.stream[ClientKey, Pv](PvTopic)
+
+    // repartition events by clientKey + pvKey
+    val evToPvKeyMapper: KeyValueMapper[ClientKey, Ev, PvKey] =
+      (clientKey, ev) => PvKey(clientKey.clientId, ev.pvId)
+
+    val evByPvKeyStream: KStream[PvKey, Ev] = evStream.selectKey(evToPvKeyMapper)
+
+    // repartition page views by clientKey + pvKey
+    val pvToPvKeyMapper: KeyValueMapper[ClientKey, Pv, PvKey] =
+      (clientKey, pv) => PvKey(clientKey.clientId, pv.pvId)
+
+    val pvByPvKeyStream: KStream[PvKey, Pv] = pvStream.selectKey(pvToPvKeyMapper)
+
+    // join
+    val evPvJoiner: ValueJoiner[Ev, Pv, EvPv] = { (ev, pv) =>
+      if (pv == null) {
+        EvPv(ev.evId, ev.value, None, None)
+      } else {
+        EvPv(ev.evId, ev.value, Some(pv.pvId), Some(pv.value))
+      }
+    }
+
+    val joinRetention = PvWindow.toMillis * 2 + 1
+    val joinWindow = JoinWindows.of(PvWindow.toMillis).until(joinRetention)
+
+    val evPvStream: KStream[PvKey, EvPv] = evByPvKeyStream.leftJoin(pvByPvKeyStream, evPvJoiner, joinWindow)
+
+    // repartition by clientKey + pvKey + evKey
+    val evPvToEvPvKeyMapper: KeyValueMapper[PvKey, EvPv, EvPvKey] =
+      (pvKey, evPv) => EvPvKey(pvKey.clientId, pvKey.pvId, evPv.evId)
+
+    val evPvByEvPvKeyStream: KStream[EvPvKey, EvPv] = evPvStream.selectKey(evPvToEvPvKeyMapper)
+
+    // deduplicate
+    val evPvReducer: Reducer[EvPv] =
+      (evPv1, _) => evPv1
+
+    val deduplicationRetention = EvPvWindow.toMillis * 2 + 1
+    val deduplicationWindow = TimeWindows.of(EvPvWindow.toMillis).until(deduplicationRetention)
+
+    val deduplicatedStream: KStream[Windowed[EvPvKey], EvPv] = evPvByEvPvKeyStream
+      .groupByKey()
+      .reduce(evPvReducer, deduplicationWindow, "evpv-store")
+      .toStream()
+
+    // map key again into client id
+    val evPvToClientKeyMapper: KeyValueMapper[Windowed[EvPvKey], EvPv, ClientId] =
+      (windowedEvPvKey, _) => windowedEvPvKey.key.clientId
+
+    val finalStream: KStream[ClientId, EvPv] = deduplicatedStream.selectKey(evPvToClientKeyMapper)
+
+    // sink
+    finalStream.to(EvPvTopic)
+
+    builder.build()
   }
 
   def pvStoreBuilder(storeName: String, storeWindow: FiniteDuration): StoreBuilder[WindowStore[ClientKey, Pv]] = {

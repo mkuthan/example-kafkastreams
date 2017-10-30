@@ -28,7 +28,7 @@ val customScalacOptions = Seq(
   "-encoding", "UTF-8",
   "-feature",
   "-unchecked",
-  "-Xfatal-warnings",
+  // "-Xfatal-warnings",
   "-Xfuture",
   "-Xlint",
   "-Yno-adapted-args",
