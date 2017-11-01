@@ -154,7 +154,7 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
       () => new PvWindowProcessor(pvStoreName)
 
     val evJoinProcessor: ProcessorSupplier[ClientKey, Ev] =
-      () => new EvJoinProcessor(pvStoreName, PvWindow, EvPvWindow)
+      () => new EvJoinProcessor(pvStoreName, evPvStoreName, PvWindow, EvPvWindow)
 
     val evPvMapProcessor: ProcessorSupplier[EvPvKey, EvPv] =
       () => new EvPvMapProcessor()
@@ -240,16 +240,20 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
   }
 
   def pvStoreBuilder(storeName: String, storeWindow: FiniteDuration): StoreBuilder[WindowStore[ClientKey, Pv]] = {
+    import scala.collection.JavaConverters._
+
     val retention = storeWindow.toMillis
     val window = storeWindow.toMillis
     val segments = 3
     val retainDuplicates = false
 
+    val loggingConfig = Map[String, String]()
+
     Stores.windowStoreBuilder(
       Stores.persistentWindowStore(storeName, retention, segments, window, retainDuplicates),
       ClientKeySerde,
       PvSerde
-    )
+    ).withLoggingEnabled(loggingConfig.asJava)
   }
 
   def evPvStoreBuilder(storeName: String, storeWindow: FiniteDuration): StoreBuilder[WindowStore[EvPvKey, EvPv]] = {
@@ -270,14 +274,13 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
     private lazy val pvStore: WindowStore[ClientKey, Pv] =
       context().getStateStore(pvStoreName).asInstanceOf[WindowStore[ClientKey, Pv]]
 
-    override def process(key: ClientKey, value: Pv): Unit = {
-      context().forward(key, value)
+    override def process(key: ClientKey, value: Pv): Unit =
       pvStore.put(key, value)
-    }
   }
 
   class EvJoinProcessor(
     val pvStoreName: String,
+    val evPvStoreName: String,
     val joinWindow: FiniteDuration,
     val deduplicationWindow: FiniteDuration
   ) extends AbstractProcessor[ClientKey, Ev] {
@@ -288,7 +291,7 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
       context().getStateStore(pvStoreName).asInstanceOf[WindowStore[ClientKey, Pv]]
 
     private lazy val evPvStore: WindowStore[EvPvKey, EvPv] =
-      context().getStateStore(pvStoreName).asInstanceOf[WindowStore[EvPvKey, EvPv]]
+      context().getStateStore(evPvStoreName).asInstanceOf[WindowStore[EvPvKey, EvPv]]
 
     override def process(key: ClientKey, ev: Ev): Unit = {
       val timestamp = context().timestamp()
