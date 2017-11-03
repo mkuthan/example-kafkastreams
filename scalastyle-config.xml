@@ -270,10 +270,9 @@
 
   <check class="org.scalastyle.scalariform.StructuralTypeChecker" level="warning" enabled="true"/>
 
-  <!-- disabled -->
-  <check class="org.scalastyle.scalariform.TodoCommentChecker" level="warning" enabled="false">
+  <check class="org.scalastyle.scalariform.TodoCommentChecker" level="warning" enabled="true">
     <parameters>
-      <parameter default="TODO|FIXME" type="string" name="words"/>
+      <parameter type="string" name="words">TODO|FIXME</parameter>
     </parameters>
   </check>
 

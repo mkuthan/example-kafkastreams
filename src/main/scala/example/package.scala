@@ -14,6 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import scala.concurrent.duration.FiniteDuration
 import scala.util.Random
 
 package object example {
@@ -32,7 +33,7 @@ package object example {
   def randomName(length: Int): String =
     Random.alphanumeric.take(length).mkString
 
-  def sleep(sleep: Long): Unit =
-    Thread.sleep(sleep)
+  def sleep(sleep: FiniteDuration): Unit =
+    Thread.sleep(sleep.toMillis)
 
 }

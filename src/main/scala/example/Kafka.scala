@@ -41,6 +41,8 @@ object Kafka {
 
   private val DefaultPollTime = 60.seconds
 
+  private val DefaultCommitInterval = 5.seconds
+
   private val DefaultKafkaPort = 9092
 
   private val DefaultZkPort = 2181
@@ -64,13 +66,16 @@ object Kafka {
     props
   }
 
+  private lazy val StreamApplicationId = randomName(DefaultNameLeght)
+
   private lazy val StreamProps = {
     val props = new Properties()
     props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, DefaultBootstrapServers)
-    props.put(StreamsConfig.APPLICATION_ID_CONFIG, randomName(DefaultNameLeght))
+    props.put(StreamsConfig.APPLICATION_ID_CONFIG, StreamApplicationId)
     props.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, SerdeName)
     props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, SerdeName)
     props.put(StreamsConfig.DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG, TimestampExtractorName)
+    props.put(StreamsConfig.COMMIT_INTERVAL_MS_CONFIG, DefaultCommitInterval.toMillis.asInstanceOf[AnyRef])
     props
   }
 
@@ -91,11 +96,11 @@ trait Kafka extends LazyLogging {
     implicit val config = EmbeddedKafkaConfig(DefaultKafkaPort, DefaultZkPort)
     EmbeddedKafka.start()
 
-    logger.info("Embedded Kafka started")
+    logger.info(s"Embedded Kafka started on $DefaultKafkaPort")
   }
 
   def kafkaStop(): Unit = {
-    logger.info("Stopping embedded Kafka")
+    logger.info(s"Stopping embedded Kafka on $DefaultKafkaPort")
 
     EmbeddedKafka.stop()
 
@@ -110,7 +115,7 @@ trait Kafka extends LazyLogging {
     streams.cleanUp()
     streams.start()
 
-    logger.info("Stream started")
+    logger.info(s"Stream started '$StreamApplicationId'")
   }
 
   def kafkaProduce(block: GenericProducer => Unit): Unit = {

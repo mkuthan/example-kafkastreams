@@ -48,11 +48,11 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
 
   case class EvPv(evId: EvId, evValue: String, pvId: Option[PvId], pvValue: Option[String])
 
-  private val PvTopic = "pv"
+  private val PvTopic = "clickstream.page_views"
 
-  private val EvTopic = "ev"
+  private val EvTopic = "clickstream.events"
 
-  private val EvPvTopic = "evpv"
+  private val EvPvTopic = "clickstream.events_enriched"
 
   private val ClientKeySerde = KryoSerde[ClientKey]
 
@@ -70,16 +70,16 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
     kafkaStart()
 
     daemonThread {
-      sleep(100L) // scalastyle:off
+      sleep(1.second)
       kafkaProduce { producer =>
         clickstream(ClientKey("bob"), producer)
       }
     }
 
     daemonThread {
-      sleep(200L) // scalastyle:off
+      sleep(2.seconds)
       kafkaProduce { producer =>
-        clickstream(ClientKey("jim"), producer)
+        // clickstream(ClientKey("jim"), producer)
       }
     }
 
@@ -90,7 +90,7 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
     }
 
     daemonThread {
-      sleep(3000L) // scalastyle:off
+      sleep(3.seconds)
 
       startStreams(clickstreamJoinProcessorApi())
       // startStreams(clickstreamJoinDsl())
@@ -103,40 +103,49 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
 
   def clickstream(clientKey: ClientKey, producer: GenericProducer): Unit = {
 
-    def sendEv(pvId: PvId, evId: EvId) =
-      producer.send(EvTopic, clientKey, Ev(pvId, evId, s"ev_$evId"))
+    def sendPv(pvId: PvId, pvValue: String) =
+      producer.send(PvTopic, clientKey, Pv(pvId, pvValue))
 
-    def sendPv(pvId: PvId) =
-      producer.send(PvTopic, clientKey, Pv(pvId, s"pv_$pvId"))
+    def sendEv(pvId: String, evId: EvId, evValue: String) =
+      producer.send(EvTopic, clientKey, Ev(pvId, evId, evValue))
 
-    1 to 999 foreach { i =>
-      val pvId = "%03d".format(i)
+    10 to 99 foreach { i =>
+      val pv1Id = s"${i}_1"
 
-      // early event
-      sendEv(pvId, "00")
-      sendEv(pvId, "00") // duplicate
-      sleep(1000L)
+      // main page view
+      sendPv(pv1Id, "/")
 
-      // pv
-      sendPv(pvId)
+      // a few impression events collected almost immediately
+      sleep(100.millis)
+      sendEv(pv1Id, "ev0", "show header")
+      sendEv(pv1Id, "ev1", "show ads")
+      sendEv(pv1Id, "ev2", "show recommendation")
 
-      // events
-      sleep(1000L)
-      sendEv(pvId, "01")
-      sendEv(pvId, "01") // duplicate
-      sleep(2000L)
-      sendEv(pvId, "02")
-      sendEv(pvId, "02") // duplicate
-      sleep(4000L)
-      sendEv(pvId, "03")
-      sendEv(pvId, "03") // duplicate
+      // single duplicated event, welcome to distributed world
+      sendEv(pv1Id, "ev1", "show ads")
 
-      // late event
-      sleep(10000L)
-      sendEv(pvId, "99")
-      sendEv(pvId, "99") // duplicate
+      // client clicks on one of the offers
+      sleep(10.seconds)
+      sendEv(pv1Id, "ev3", "click recommendation")
 
-      sleep(3000L)
+      val pv2Id = s"${i}_2"
+
+      // out of order event collected before page view from offer page
+      sendEv(pv2Id, "ev0", "show header")
+      sleep(100.millis)
+
+      // offer page view
+      sendPv(pv2Id, "/offer?id=1234")
+
+      // an impression event collected almost immediately
+      sleep(100.millis)
+      sendEv(pv2Id, "ev1", "show ads")
+
+      // purchase after short coffee break (but longer than PvWindow)
+      sleep(20.seconds)
+      sendEv(pv1Id, "ev2", "add to cart")
+
+      sleep(1.minute)
     }
   }
 
@@ -224,6 +233,7 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
 
     val deduplicatedStream: KStream[Windowed[EvPvKey], EvPv] = evPvByEvPvKeyStream
       .groupByKey()
+      // TODO: update to 1.0 API
       .reduce(evPvReducer, deduplicationWindow, "evpv-store")
       .toStream()
 
@@ -245,7 +255,7 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
     val retention = storeWindow.toMillis
     val window = storeWindow.toMillis
     val segments = 3
-    val retainDuplicates = false
+    val retainDuplicates = true
 
     val loggingConfig = Map[String, String]()
 
@@ -298,25 +308,19 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
       val evPvKey = EvPvKey(key.clientId, ev.pvId, ev.evId)
 
       if (isNotDuplicate(evPvKey, timestamp, deduplicationWindow)) {
-        val pvs = storedPvs(key, timestamp, joinWindow)
+        val evPv = storedPvs(key, timestamp, joinWindow)
+          .find { pv =>
+            pv.pvId == ev.pvId
+          }
+          .map { pv =>
+            EvPv(ev.evId, ev.value, Some(pv.pvId), Some(pv.value))
+          }
+          .getOrElse {
+            EvPv(ev.evId, ev.value, None, None)
+          }
 
-        val evPvs = if (pvs.isEmpty) {
-          Seq(EvPv(ev.evId, ev.value, None, None))
-        } else {
-          pvs
-            .filter { pv =>
-              pv.pvId == ev.pvId
-            }
-            .map { pv =>
-              EvPv(ev.evId, ev.value, Some(pv.pvId), Some(pv.value))
-            }
-            .toSeq
-        }
-
-        evPvs.foreach { evPv =>
-          context().forward(evPvKey, evPv)
-          evPvStore.put(evPvKey, evPv)
-        }
+        context().forward(evPvKey, evPv)
+        evPvStore.put(evPvKey, evPv)
       }
     }
 

@@ -54,7 +54,7 @@ object DeduplicationExample extends LazyLogging with Kafka {
     }
 
     daemonThread {
-      sleep(3000L) // scalastyle:off
+      sleep(3.seconds) // scalastyle:off
 
       startStreams(deduplicate())
     }
@@ -73,20 +73,20 @@ object DeduplicationExample extends LazyLogging with Kafka {
 
       send(key, "00")
 
-      sleep(1000L) // scalastyle:off
+      sleep(1.second)
       send(key, "01")
 
-      sleep(2000L) // scalastyle:off
+      sleep(2.seconds)
       send(key, "02")
 
-      sleep(4000L) // scalastyle:off
+      sleep(4.seconds)
       send(key, "03")
 
       // duplicates
-      sleep(10000L) // scalastyle:off
+      sleep(10.seconds)
       send(key, "99")
 
-      sleep(3000L) // scalastyle:off
+      sleep(5.seconds)
     }
   }
 
