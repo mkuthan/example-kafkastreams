@@ -18,6 +18,7 @@ and does not require any additional setup.
 Missing Features
 ========
 * Tests
+* Closing WindowStoreIterator (it is not feasible with javaIt.asScala converter)
 
 References
 ==========
