@@ -14,21 +14,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-val kafkaVersion = "1.0.0"
+lazy val kafkaVersion = "1.0.0"
 
-val commonSettings = Seq(
+lazy val commonSettings = Seq(
   name := "example-kafkastreams",
   version := "1.0",
   organization := "http://mkuthan.github.io/",
   scalaVersion := "2.12.4"
 )
 
-val customScalacOptions = Seq(
+lazy val customScalacOptions = Seq(
   "-deprecation",
   "-encoding", "UTF-8",
   "-feature",
   "-unchecked",
-  // "-Xfatal-warnings",
+  "-Xfatal-warnings",
   "-Xfuture",
   "-Xlint",
   "-Yno-adapted-args",
@@ -37,11 +37,11 @@ val customScalacOptions = Seq(
   "-Ywarn-unused-import"
 )
 
-val customResolvers = Seq(
+lazy val customResolvers = Seq(
   "Apache Staging" at "https://repository.apache.org/content/groups/staging/"
 )
 
-val customLibraryDependencies = Seq(
+lazy val customLibraryDependencies = Seq(
   "org.apache.kafka" %% "kafka" % kafkaVersion,
   "org.apache.kafka" % "kafka-streams" % kafkaVersion,
 
@@ -54,11 +54,14 @@ val customLibraryDependencies = Seq(
   "log4j" % "log4j" % "1.2.16"
 )
 
-val customJavaOptions = Seq(
+lazy val customJavaOptions = Seq(
   "-Xms1024m",
   "-Xmx1024m",
   "-XX:-MaxFDLimit"
 )
+
+lazy val compileScalastyle = taskKey[Unit]("compileScalastyle")
+lazy val testScalastyle = taskKey[Unit]("testScalastyle")
 
 lazy val root = (project in file("."))
   .settings(commonSettings)
@@ -68,3 +71,10 @@ lazy val root = (project in file("."))
   .settings(fork in run := true)
   .settings(connectInput in run := true)
   .settings(javaOptions in run ++= customJavaOptions)
+  .settings(scalastyleFailOnError := true)
+  .settings(
+    compileScalastyle := scalastyle.in(Compile).toTask("").value,
+    (compile in Compile) := ((compile in Compile) dependsOn compileScalastyle).value)
+  .settings(
+    testScalastyle := scalastyle.in(Test).toTask("").value,
+    (test in Test) := ((test in Test) dependsOn testScalastyle).value)

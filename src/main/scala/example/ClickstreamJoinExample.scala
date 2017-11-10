@@ -20,7 +20,7 @@ import scala.concurrent.duration._
 
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.streams.{StreamsBuilder, Topology}
-import org.apache.kafka.streams.kstream.{JoinWindows, KeyValueMapper, KStream, Reducer, TimeWindows, ValueJoiner, Windowed}
+import org.apache.kafka.streams.kstream.{JoinWindows, KeyValueMapper, KStream, Materialized, Reducer, TimeWindows, ValueJoiner, Windowed}
 import org.apache.kafka.streams.processor.{AbstractProcessor, ProcessorSupplier}
 import org.apache.kafka.streams.state.{StoreBuilder, Stores, WindowStore}
 
@@ -233,8 +233,8 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
 
     val deduplicatedStream: KStream[Windowed[EvPvKey], EvPv] = evPvByEvPvKeyStream
       .groupByKey()
-      // TODO: update to 1.0 API
-      .reduce(evPvReducer, deduplicationWindow, "evpv-store")
+      .windowedBy(deduplicationWindow)
+      .reduce(evPvReducer, Materialized.as("deduplication_store"))
       .toStream()
 
     // map key again into client id
