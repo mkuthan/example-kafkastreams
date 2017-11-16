@@ -1,3 +1,4 @@
+
 // Copyright (C) 2011-2012 the original author or authors.
 // See the LICENCE.txt file distributed with this work for additional
 // information regarding copyright ownership.
@@ -71,12 +72,9 @@ lazy val root = (project in file("."))
   .settings(fork in run := true)
   .settings(connectInput in run := true)
   .settings(javaOptions in run ++= customJavaOptions)
-  .settings(scalastyleFailOnError := true)
   .settings(
+    scalastyleFailOnError := true,
     compileScalastyle := scalastyle.in(Compile).toTask("").value,
-    (compile in Compile) := ((compile in Compile) dependsOn compileScalastyle).value)
-  .settings(
+    (compile in Compile) := ((compile in Compile) dependsOn compileScalastyle).value,
     testScalastyle := scalastyle.in(Test).toTask("").value,
     (test in Test) := ((test in Test) dependsOn testScalastyle).value)
-  .settings(scalafmtTestOnCompile in ThisBuild := true)
-  .settings(scalafmtTestOnCompile in ThisBuild := true)

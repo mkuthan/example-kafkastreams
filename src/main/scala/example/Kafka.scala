@@ -21,10 +21,17 @@ import java.util.Properties
 import scala.concurrent.duration._
 
 import com.typesafe.scalalogging.LazyLogging
-import net.manub.embeddedkafka.{EmbeddedKafka, EmbeddedKafkaConfig}
-import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord, KafkaConsumer}
-import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord}
-import org.apache.kafka.streams.{KafkaStreams, StreamsConfig, Topology}
+import net.manub.embeddedkafka.EmbeddedKafka
+import net.manub.embeddedkafka.EmbeddedKafkaConfig
+import org.apache.kafka.clients.consumer.ConsumerConfig
+import org.apache.kafka.clients.consumer.ConsumerRecord
+import org.apache.kafka.clients.consumer.KafkaConsumer
+import org.apache.kafka.clients.producer.KafkaProducer
+import org.apache.kafka.clients.producer.ProducerConfig
+import org.apache.kafka.clients.producer.ProducerRecord
+import org.apache.kafka.streams.KafkaStreams
+import org.apache.kafka.streams.StreamsConfig
+import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.processor.FailOnInvalidTimestamp
 
 object Kafka {

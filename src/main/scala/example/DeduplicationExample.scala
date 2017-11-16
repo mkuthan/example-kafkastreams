@@ -21,8 +21,11 @@ import scala.concurrent.duration._
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.common.serialization.Serdes
 import org.apache.kafka.streams.Topology
-import org.apache.kafka.streams.processor.{AbstractProcessor, ProcessorSupplier}
-import org.apache.kafka.streams.state.{StoreBuilder, Stores, WindowStore}
+import org.apache.kafka.streams.processor.AbstractProcessor
+import org.apache.kafka.streams.processor.ProcessorSupplier
+import org.apache.kafka.streams.state.StoreBuilder
+import org.apache.kafka.streams.state.Stores
+import org.apache.kafka.streams.state.WindowStore
 
 object DeduplicationExample extends LazyLogging with Kafka {
 
@@ -94,7 +97,8 @@ object DeduplicationExample extends LazyLogging with Kafka {
     val processorName = "deduplication-processor"
     val storeName = "deduplication-store"
 
-    val deduplicationStore = deduplicationStoreBuilder(storeName, DeduplicationWindow)
+    val deduplicationStore =
+      deduplicationStoreBuilder(storeName, DeduplicationWindow)
 
     val deduplicationProcessor: ProcessorSupplier[K, V] =
       () => new DeduplicationProcessor(storeName, DeduplicationWindow)
@@ -123,11 +127,13 @@ object DeduplicationExample extends LazyLogging with Kafka {
 
     import scala.collection.JavaConverters._
 
-    private lazy val store: WindowStore[K, V] = context().getStateStore(storeName).asInstanceOf[WindowStore[K, V]]
+    private lazy val store: WindowStore[K, V] =
+      context().getStateStore(storeName).asInstanceOf[WindowStore[K, V]]
 
     override def process(key: K, value: V): Unit = {
       val timestamp = context().timestamp()
-      val existingValues = store.fetch(key, timestamp - window.toMillis, timestamp).asScala
+      val existingValues =
+        store.fetch(key, timestamp - window.toMillis, timestamp).asScala
 
       if (existingValues.isEmpty) {
         context().forward(key, value)

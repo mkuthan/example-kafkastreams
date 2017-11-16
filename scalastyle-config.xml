@@ -13,7 +13,7 @@
     </parameters>
   </check>
 
-  <check class="org.scalastyle.file.FileTabChecker" level="waring" enabled="true"/>
+  <check class="org.scalastyle.file.FileTabChecker" level="error" enabled="true"/>
 
   <check class="org.scalastyle.file.HeaderMatchesChecker" level="warning" enabled="true">
     <parameters>
@@ -48,8 +48,7 @@
 
   <check class="org.scalastyle.file.WhitespaceEndOfLineChecker" level="warning" enabled="true"/>
 
-  <!-- disabled -->
-  <check class="org.scalastyle.scalariform.BlockImportChecker" level="warning" enabled="false"/>
+  <check class="org.scalastyle.scalariform.BlockImportChecker" level="warning" enabled="true"/>
 
   <check class="org.scalastyle.scalariform.ClassNamesChecker" level="warning" enabled="true">
     <parameters>
@@ -132,7 +131,6 @@
   <!-- disabled -->
   <check class="org.scalastyle.scalariform.ImportGroupingChecker" level="warning" enabled="false"/>
 
-  <!-- disabled -->
   <check class="org.scalastyle.scalariform.ImportOrderChecker" level="warning" enabled="true">
     <parameters>
       <parameter name="groups">java,scala,others</parameter>

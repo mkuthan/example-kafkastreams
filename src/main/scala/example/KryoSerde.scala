@@ -16,8 +16,11 @@
 
 package example
 
-import com.twitter.chill.{KryoPool, ScalaKryoInstantiator}
-import org.apache.kafka.common.serialization.{Deserializer, Serde, Serializer}
+import com.twitter.chill.KryoPool
+import com.twitter.chill.ScalaKryoInstantiator
+import org.apache.kafka.common.serialization.Deserializer
+import org.apache.kafka.common.serialization.Serde
+import org.apache.kafka.common.serialization.Serializer
 
 class KryoSerde[T <: AnyRef] extends Deserializer[T] with Serializer[T] with Serde[T] {
 
@@ -26,7 +29,8 @@ class KryoSerde[T <: AnyRef] extends Deserializer[T] with Serializer[T] with Ser
   lazy val kryo = KryoPool.withBuffer(
     DefaultPoolSize,
     new ScalaKryoInstantiator(),
-    OutputBufferInitial, OutputBufferMax
+    OutputBufferInitial,
+    OutputBufferMax
   )
 
   override def deserialize(topic: String, data: Array[Byte]): T =
@@ -54,4 +58,3 @@ object KryoSerde {
   def apply[T <: AnyRef](): KryoSerde[T] = new KryoSerde[T]()
 
 }
-
