@@ -78,3 +78,5 @@ lazy val root = (project in file("."))
   .settings(
     testScalastyle := scalastyle.in(Test).toTask("").value,
     (test in Test) := ((test in Test) dependsOn testScalastyle).value)
+  .settings(scalafmtTestOnCompile in ThisBuild := true)
+  .settings(scalafmtTestOnCompile in ThisBuild := true)
