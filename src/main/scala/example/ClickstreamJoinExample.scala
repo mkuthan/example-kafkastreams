@@ -22,8 +22,8 @@ import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.streams.StreamsBuilder
 import org.apache.kafka.streams.Topology
 import org.apache.kafka.streams.kstream.JoinWindows
-import org.apache.kafka.streams.kstream.KeyValueMapper
 import org.apache.kafka.streams.kstream.KStream
+import org.apache.kafka.streams.kstream.KeyValueMapper
 import org.apache.kafka.streams.kstream.Materialized
 import org.apache.kafka.streams.kstream.Reducer
 import org.apache.kafka.streams.kstream.TimeWindows
@@ -65,13 +65,13 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
 
   private val EvPvTopic = "clickstream.events_enriched"
 
-  private val ClientKeySerde = KryoSerde[ClientKey]
+  private val ClientKeySerde = KryoSerde[ClientKey]()
 
-  private val PvSerde = KryoSerde[Pv]
+  private val PvSerde = KryoSerde[Pv]()
 
-  private val EvPvKeySerde = KryoSerde[EvPvKey]
+  private val EvPvKeySerde = KryoSerde[EvPvKey]()
 
-  private val EvPvSerde = KryoSerde[EvPv]
+  private val EvPvSerde = KryoSerde[EvPv]()
 
   private val PvWindow = 15.seconds
 
@@ -114,10 +114,10 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
 
   def clickstream(clientKey: ClientKey, producer: GenericProducer): Unit = {
 
-    def sendPv(pvId: PvId, pvValue: String) =
+    def sendPv(pvId: PvId, pvValue: String): Unit =
       producer.send(PvTopic, clientKey, Pv(pvId, pvValue))
 
-    def sendEv(pvId: String, evId: EvId, evValue: String) =
+    def sendEv(pvId: String, evId: EvId, evValue: String): Unit =
       producer.send(EvTopic, clientKey, Ev(pvId, evId, evValue))
 
     10 to 99 foreach { i =>
@@ -245,8 +245,9 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
       (evPv1, _) => evPv1
 
     val deduplicationRetention = EvPvWindow.toMillis * 2 + 1
-    val deduplicationWindow =
-      TimeWindows.of(EvPvWindow.toMillis).until(deduplicationRetention)
+    val deduplicationWindow = TimeWindows
+      .of(EvPvWindow.toMillis)
+      .until(deduplicationRetention)
 
     val deduplicatedStream: KStream[Windowed[EvPvKey], EvPv] =
       evPvByEvPvKeyStream
@@ -299,7 +300,7 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
     )
   }
 
-  class PvWindowProcessor(val pvStoreName: String) extends AbstractProcessor[ClientKey, Pv] {
+  class PvWindowProcessor(pvStoreName: String) extends AbstractProcessor[ClientKey, Pv] {
 
     private lazy val pvStore: WindowStore[ClientKey, Pv] =
       context()
@@ -311,10 +312,10 @@ object ClickstreamJoinExample extends LazyLogging with Kafka {
   }
 
   class EvJoinProcessor(
-    val pvStoreName: String,
-    val evPvStoreName: String,
-    val joinWindow: FiniteDuration,
-    val deduplicationWindow: FiniteDuration
+      pvStoreName: String,
+      evPvStoreName: String,
+      joinWindow: FiniteDuration,
+      deduplicationWindow: FiniteDuration
   ) extends AbstractProcessor[ClientKey, Ev] {
 
     import scala.collection.JavaConverters._

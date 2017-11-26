@@ -132,8 +132,7 @@ object DeduplicationExample extends LazyLogging with Kafka {
 
     override def process(key: K, value: V): Unit = {
       val timestamp = context().timestamp()
-      val existingValues =
-        store.fetch(key, timestamp - window.toMillis, timestamp).asScala
+      val existingValues = store.fetch(key, timestamp - window.toMillis, timestamp).asScala
 
       if (existingValues.isEmpty) {
         context().forward(key, value)
